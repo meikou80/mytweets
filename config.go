@@ -59,7 +59,22 @@ func LoadConfig(path string) (AppConfig, error) {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return AppConfig{}, fmt.Errorf("parse config: %w", err)
 	}
+	return normalizeRawConfig(raw)
+}
 
+func defaultConfig() AppConfig {
+	return AppConfig{
+		Users:              []string{},
+		Keywords:           []string{},
+		KeywordSearchMode:  KeywordSearchSeparate,
+		SearchEndpoint:     SearchEndpointRecent,
+		ExcludeReposts:     true,
+		ExcludeReplies:     true,
+		MaxPagesPerRefresh: 1,
+	}
+}
+
+func normalizeRawConfig(raw rawConfig) (AppConfig, error) {
 	cfg := AppConfig{
 		Users:              normalizeUsernames(raw.Users),
 		Keywords:           normalizeStrings(raw.Keywords),
@@ -73,6 +88,23 @@ func LoadConfig(path string) (AppConfig, error) {
 		ExcludeReplies:     true,
 		MaxPagesPerRefresh: raw.MaxPagesPerRefresh,
 	}
+	if raw.ExcludeReposts != nil {
+		cfg.ExcludeReposts = *raw.ExcludeReposts
+	}
+	if raw.ExcludeReplies != nil {
+		cfg.ExcludeReplies = *raw.ExcludeReplies
+	}
+	return NormalizeConfig(cfg)
+}
+
+func NormalizeConfig(cfg AppConfig) (AppConfig, error) {
+	cfg.Users = normalizeUsernames(cfg.Users)
+	cfg.Keywords = normalizeStrings(cfg.Keywords)
+	cfg.KeywordSearchMode = strings.TrimSpace(cfg.KeywordSearchMode)
+	cfg.SearchEndpoint = strings.TrimSpace(cfg.SearchEndpoint)
+	cfg.StartTime = strings.TrimSpace(cfg.StartTime)
+	cfg.EndTime = strings.TrimSpace(cfg.EndTime)
+	cfg.Language = strings.TrimSpace(cfg.Language)
 	if cfg.KeywordSearchMode == "" {
 		cfg.KeywordSearchMode = KeywordSearchSeparate
 	}
@@ -81,12 +113,6 @@ func LoadConfig(path string) (AppConfig, error) {
 	}
 	if cfg.LookbackDays < 1 && cfg.SearchEndpoint == SearchEndpointAll && cfg.StartTime == "" {
 		cfg.LookbackDays = 365
-	}
-	if raw.ExcludeReposts != nil {
-		cfg.ExcludeReposts = *raw.ExcludeReposts
-	}
-	if raw.ExcludeReplies != nil {
-		cfg.ExcludeReplies = *raw.ExcludeReplies
 	}
 	if cfg.MaxPagesPerRefresh < 1 {
 		cfg.MaxPagesPerRefresh = 1

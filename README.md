@@ -10,7 +10,20 @@
 
 ## Setup
 
-`config.example.json` を参考に `config.json` を作成します。
+Bearer Tokenを環境変数に設定します。
+
+```sh
+export X_BEARER_TOKEN=...
+```
+
+Windows PowerShellでは次のように設定します。
+
+```powershell
+$env:X_BEARER_TOKEN="..."
+```
+
+既存の設定を取り込みたい場合は、`config.example.json` を参考に `config.json` を作成します。
+初回アクセス時にSQLiteへ取り込まれ、以後はブラウザ上で保存した設定が使われます。
 
 ```json
 {
@@ -26,18 +39,6 @@
 }
 ```
 
-Bearer Tokenを環境変数に設定します。
-
-```sh
-export X_BEARER_TOKEN=...
-```
-
-Windows PowerShellでは次のように設定します。
-
-```powershell
-$env:X_BEARER_TOKEN="..."
-```
-
 ## Usage
 
 ```sh
@@ -49,13 +50,17 @@ Usage of mytweets:
   -a string
         server address (default ":8989")
   -config string
-        config path (default "config.json")
+        initial config import path (default "config.json")
   -db string
         database path (default "tweets.db")
 ```
 
-ブラウザで `http://localhost:8989` を開き、「Xから取得」を押すと `config.json` の条件で取得します。
+ブラウザで `http://localhost:8989` を開き、「取得設定」を編集して「設定を保存」を押します。
+「Xから取得」を押すと、SQLiteに保存された設定で取得します。
 「CSV出力」を押すと、現在の検索欄とソース絞り込みに一致する保存済みポストをCSVでダウンロードします。
+
+`config.json` はDBに設定がまだ保存されていない初回だけ読み込まれます。
+一度ブラウザから保存した後は、`config.json` を編集しても自動同期されません。
 
 ## Keyword Search Mode
 
@@ -96,6 +101,7 @@ Usage of mytweets:
 * `separate` のユーザー追跡は `GET /2/users/by` と `GET /2/users/{id}/tweets` を使います。
 * キーワード追跡は `search_endpoint` に応じて `GET /2/tweets/search/recent` または `GET /2/tweets/search/all` を使います。
 * `X_BEARER_TOKEN` が未設定でもサーバーは起動しますが、取得時にエラーになります。
+* 設定はSQLiteに保存されます。`config.json` は初回取り込み用の後方互換ファイルです。
 
 ## License
 

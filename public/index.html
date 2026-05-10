@@ -24,6 +24,38 @@
     </form>
     <p id="status"></p>
     <ul id="tweets"></ul>
+    <section id="settings-panel">
+      <h2>取得設定</h2>
+      <form id="settings">
+        <label for="cfg-users">ユーザー</label>
+        <textarea name="users" id="cfg-users" rows="4" placeholder="XDevelopers"></textarea>
+        <label for="cfg-keywords">キーワード</label>
+        <textarea name="keywords" id="cfg-keywords" rows="4" placeholder="生成AI&#10;Go言語"></textarea>
+        <label for="cfg-keyword-search-mode">キーワード検索</label>
+        <select name="keyword_search_mode" id="cfg-keyword-search-mode">
+          <option value="separate">ユーザー投稿と全体検索</option>
+          <option value="tracked_users">指定ユーザー内を検索</option>
+        </select>
+        <label for="cfg-search-endpoint">検索範囲</label>
+        <select name="search_endpoint" id="cfg-search-endpoint">
+          <option value="recent">最近</option>
+          <option value="all">全期間</option>
+        </select>
+        <label for="cfg-lookback-days">さかのぼる日数</label>
+        <input type="number" name="lookback_days" id="cfg-lookback-days" min="0" step="1">
+        <label for="cfg-start-time">開始時刻</label>
+        <input type="text" name="start_time" id="cfg-start-time" placeholder="2025-05-10T00:00:00Z">
+        <label for="cfg-end-time">終了時刻</label>
+        <input type="text" name="end_time" id="cfg-end-time" placeholder="2026-05-10T00:00:00Z">
+        <label for="cfg-language">言語</label>
+        <input type="text" name="language" id="cfg-language" placeholder="ja">
+        <label for="cfg-max-pages">最大ページ数</label>
+        <input type="number" name="max_pages_per_refresh" id="cfg-max-pages" min="1" step="1">
+        <label class="check"><input type="checkbox" name="exclude_reposts" id="cfg-exclude-reposts"> リポストを除外</label>
+        <label class="check"><input type="checkbox" name="exclude_replies" id="cfg-exclude-replies"> 返信を除外</label>
+        <input type="button" id="save-config" value="設定を保存">
+      </form>
+    </section>
   </main>
 </body>
 </html>

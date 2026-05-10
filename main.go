@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -14,7 +16,7 @@ import (
 var (
 	addr       = flag.String("a", ":8989", "server address")
 	dbPath     = flag.String("db", "tweets.db", "database path")
-	configPath = flag.String("config", "config.json", "config path")
+	configPath = flag.String("config", "config.json", "initial config import path")
 )
 
 func main() {
@@ -27,6 +29,7 @@ func main() {
 	defer store.Close()
 
 	http.HandleFunc("/refresh", refreshHandler(store, *configPath))
+	http.HandleFunc("/config", configHandler(store, *configPath))
 	http.HandleFunc("/search", searchHandler(store))
 	http.HandleFunc("/export.csv", exportHandler(store))
 	http.Handle("/", http.FileServer(http.Dir("public")))
@@ -44,7 +47,7 @@ func refreshHandler(store *Store, cfgPath string) http.HandlerFunc {
 			return
 		}
 
-		cfg, err := LoadConfig(cfgPath)
+		cfg, err := configFromStoreOrFile(req.Context(), store, cfgPath)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -60,6 +63,63 @@ func refreshHandler(store *Store, cfgPath string) http.HandlerFunc {
 		result := RefreshPosts(req.Context(), store, client, cfg)
 		writeJSON(w, http.StatusOK, result)
 	}
+}
+
+func configHandler(store *Store, cfgPath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		switch req.Method {
+		case http.MethodGet:
+			cfg, err := configForDisplay(req.Context(), store, cfgPath)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, cfg)
+		case http.MethodPut:
+			var raw rawConfig
+			if err := json.NewDecoder(req.Body).Decode(&raw); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "parse config: " + err.Error()})
+				return
+			}
+			cfg, err := normalizeRawConfig(raw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			cfg, err = store.SaveConfig(req.Context(), cfg)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, cfg)
+		default:
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func configFromStoreOrFile(ctx context.Context, store *Store, cfgPath string) (AppConfig, error) {
+	cfg, err := store.GetConfig(ctx)
+	if err == nil {
+		return cfg, nil
+	}
+	if !errors.Is(err, ErrConfigNotSaved) {
+		return AppConfig{}, err
+	}
+
+	cfg, err = LoadConfig(cfgPath)
+	if err != nil {
+		return AppConfig{}, err
+	}
+	return store.SaveConfig(ctx, cfg)
+}
+
+func configForDisplay(ctx context.Context, store *Store, cfgPath string) (AppConfig, error) {
+	cfg, err := configFromStoreOrFile(ctx, store, cfgPath)
+	if errors.Is(err, ErrConfigNotFound) {
+		return defaultConfig(), nil
+	}
+	return cfg, err
 }
 
 func searchHandler(store *Store) http.HandlerFunc {

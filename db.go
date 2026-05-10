@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,10 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+var ErrConfigNotSaved = errors.New("config is not saved")
+
+const appConfigKey = "default"
 
 type Store struct {
 	db *sql.DB
@@ -145,6 +150,11 @@ func (s *Store) init(ctx context.Context) error {
 			name text,
 			resolved_at text not null
 		)`,
+		`create table if not exists app_config (
+			key text primary key,
+			value text not null,
+			updated_at text not null
+		)`,
 		`create index if not exists idx_posts_created_at on posts(created_at desc)`,
 		`create index if not exists idx_posts_text on posts(text)`,
 		`create index if not exists idx_post_sources_source on post_sources(source_kind, source_key)`,
@@ -155,6 +165,47 @@ func (s *Store) init(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) GetConfig(ctx context.Context) (AppConfig, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `
+		select value from app_config where key = ?
+	`, appConfigKey).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AppConfig{}, ErrConfigNotSaved
+	}
+	if err != nil {
+		return AppConfig{}, err
+	}
+
+	var cfg AppConfig
+	if err := json.Unmarshal([]byte(value), &cfg); err != nil {
+		return AppConfig{}, fmt.Errorf("parse stored config: %w", err)
+	}
+	return NormalizeConfig(cfg)
+}
+
+func (s *Store) SaveConfig(ctx context.Context, cfg AppConfig) (AppConfig, error) {
+	cfg, err := NormalizeConfig(cfg)
+	if err != nil {
+		return AppConfig{}, err
+	}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return AppConfig{}, err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		insert into app_config (key, value, updated_at)
+		values (?, ?, ?)
+		on conflict(key) do update set
+			value = excluded.value,
+			updated_at = excluded.updated_at
+	`, appConfigKey, string(b), time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return AppConfig{}, err
+	}
+	return cfg, nil
 }
 
 func (s *Store) SavePost(ctx context.Context, post StoredPost, sourceKind, sourceKey string) (SavePostResult, error) {

@@ -81,3 +81,38 @@ func TestSavePostDedupesAndKeepsSources(t *testing.T) {
 		t.Fatalf("keyword len = %d, want 1", len(keywords))
 	}
 }
+
+func TestSaveConfigRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+
+	saved, err := store.SaveConfig(ctx, AppConfig{
+		Users:              []string{"@Alice", "alice"},
+		Keywords:           []string{" Go ", "Go"},
+		KeywordSearchMode:  KeywordSearchSeparate,
+		SearchEndpoint:     SearchEndpointRecent,
+		ExcludeReposts:     true,
+		ExcludeReplies:     false,
+		MaxPagesPerRefresh: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(saved.Users), 1; got != want {
+		t.Fatalf("saved users = %d, want %d", got, want)
+	}
+
+	cfg, err := store.GetConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Users[0], "Alice"; got != want {
+		t.Fatalf("user = %q, want %q", got, want)
+	}
+	if got, want := cfg.Keywords[0], "Go"; got != want {
+		t.Fatalf("keyword = %q, want %q", got, want)
+	}
+	if cfg.ExcludeReplies {
+		t.Fatal("exclude replies should keep explicit false")
+	}
+}

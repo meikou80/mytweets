@@ -13,26 +13,54 @@ body {
 }
 
 h1 {
-  margin: 0 0 20px;
-  font-size: 28px;
+	margin: 0 0 20px;
+	font-size: 28px;
 }
 
-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 12px;
+form,
+#settings {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+#settings-panel {
+	margin-top: 24px;
+	padding-top: 20px;
+	border-top: 1px solid #d8dee4;
+}
+
+#settings-panel h2 {
+	margin: 0 0 14px;
+	font-size: 20px;
+}
+
+#settings {
+	align-items: flex-start;
 }
 
 label {
-  font-size: 14px;
-  line-height: 1.3em;
+	font-size: 14px;
+	line-height: 1.3em;
 }
 
 input[type="text"] {
-  min-width: 260px;
-  flex: 1;
+	min-width: 260px;
+	flex: 1;
+}
+
+textarea {
+	box-sizing: border-box;
+	min-width: 260px;
+	flex: 1 1 320px;
+	border: 1px solid #c7ccd1;
+	border-radius: 6px;
+	padding: 8px 10px;
+	font: inherit;
+	background: #fff;
+	resize: vertical;
 }
 
 input,
@@ -48,20 +76,31 @@ button {
 }
 
 input[type="button"] {
-  cursor: pointer;
-  background: #24292f;
-  color: #fff;
-  border-color: #24292f;
+	cursor: pointer;
+	background: #24292f;
+	color: #fff;
+	border-color: #24292f;
 }
 
 input[type="button"]:disabled {
-  cursor: wait;
-  opacity: 0.7;
+	cursor: wait;
+	opacity: 0.7;
+}
+
+.check {
+	display: inline-flex;
+	gap: 6px;
+	align-items: center;
+	min-height: 36px;
+}
+
+.check input {
+	min-height: 0;
 }
 
 #status {
-  min-height: 22px;
-  margin: 0 0 14px;
+	min-height: 22px;
+	margin: 0 0 14px;
   color: #59636e;
 }
 
