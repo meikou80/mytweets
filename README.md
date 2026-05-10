@@ -1,29 +1,101 @@
-# お気持ち検索
+# Xポスト検索
 
-自分の過去の発言(お気持ち)を検索します。
+お気に入りのユーザーやキーワードに一致するXのポストを公式APIから取得し、SQLiteに保存してローカルで検索します。
 
-![お気持ち検索](http://go-gyazo.appspot.com/07e94bb149ddca1b.png)
+## Requirements
+
+* Go 1.25+
+* X Developer App の Bearer Token
+* SQLite用の追加Cコンパイラは不要です
+
+## Setup
+
+`config.example.json` を参考に `config.json` を作成します。
+
+```json
+{
+  "users": ["XDevelopers"],
+  "keywords": ["生成AI", "Go言語"],
+  "keyword_search_mode": "separate",
+  "search_endpoint": "recent",
+  "lookback_days": 365,
+  "language": "ja",
+  "exclude_reposts": true,
+  "exclude_replies": true,
+  "max_pages_per_refresh": 1
+}
+```
+
+Bearer Tokenを環境変数に設定します。
+
+```sh
+export X_BEARER_TOKEN=...
+```
+
+Windows PowerShellでは次のように設定します。
+
+```powershell
+$env:X_BEARER_TOKEN="..."
+```
 
 ## Usage
 
-カレントディレクトリに Twitter からダウンロードした `tweets.csv` を置いたあと実行します。
+```sh
+go run .
+```
 
 ```
 Usage of mytweets:
   -a string
-    	server address (default ":8989")
+        server address (default ":8989")
+  -config string
+        config path (default "config.json")
+  -db string
+        database path (default "tweets.db")
 ```
 
-## Requirements
+ブラウザで `http://localhost:8989` を開き、「Xから取得」を押すと `config.json` の条件で取得します。
+「CSV出力」を押すと、現在の検索欄とソース絞り込みに一致する保存済みポストをCSVでダウンロードします。
 
-* sqlite3 コマンド
-* golang
+## Keyword Search Mode
 
-## Installation
+`keyword_search_mode` はキーワード検索の範囲を決めます。
 
+* `separate`: ユーザー投稿取得と、X全体のキーワード検索を別々に実行します。
+* `tracked_users`: `users` に書いたユーザー、かつ `keywords` に一致するポストだけを検索します。ユーザーの全投稿は取得しません。
+
+`tracked_users` の場合は、できるだけ `(from:user1 OR from:user2) (keyword1 OR keyword2)` のようにまとめてRecent Searchを呼びます。X APIのクエリ長制限を超える場合だけ複数リクエストに分割します。
+
+## Search Endpoint
+
+`search_endpoint` は検索対象期間を決めます。
+
+* `recent`: `/2/tweets/search/recent` を使います。直近7日間が対象です。
+* `all`: `/2/tweets/search/all` を使います。`lookback_days` または `start_time` / `end_time` で期間を指定します。
+
+過去1年分を検索する例:
+
+```json
+{
+  "users": ["sakamoto_582", "InterviewCat582"],
+  "keywords": ["自社開発"],
+  "keyword_search_mode": "tracked_users",
+  "search_endpoint": "all",
+  "lookback_days": 365,
+  "language": "ja",
+  "exclude_reposts": true,
+  "exclude_replies": true,
+  "max_pages_per_refresh": 1
+}
 ```
-$ go get github.com/mattn/mytweets
-```
+
+`all` はX APIのFull-Archive Searchなので、利用できるAPIアクセス権限が必要です。
+
+## Notes
+
+* `separate` のユーザー追跡は `GET /2/users/by` と `GET /2/users/{id}/tweets` を使います。
+* キーワード追跡は `search_endpoint` に応じて `GET /2/tweets/search/recent` または `GET /2/tweets/search/all` を使います。
+* `X_BEARER_TOKEN` が未設定でもサーバーは起動しますが、取得時にエラーになります。
 
 ## License
 

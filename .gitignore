@@ -1,0 +1,4 @@
+.gocache/
+.gotmp/
+tweets.db
+config.json

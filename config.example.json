@@ -1,0 +1,11 @@
+{
+  "users": ["XDevelopers"],
+  "keywords": ["生成AI", "Go言語"],
+  "keyword_search_mode": "separate",
+  "search_endpoint": "recent",
+  "lookback_days": 365,
+  "language": "ja",
+  "exclude_reposts": true,
+  "exclude_replies": true,
+  "max_pages_per_refresh": 1
+}

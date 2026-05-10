@@ -1,82 +1,143 @@
 package main
 
 import (
-	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
-
-	_ "github.com/mattn/go-sqlite3"
+	"strings"
+	"unicode"
 )
 
 var (
-	addr = flag.String("a", ":8989", "server address")
+	addr       = flag.String("a", ":8989", "server address")
+	dbPath     = flag.String("db", "tweets.db", "database path")
+	configPath = flag.String("config", "config.json", "config path")
 )
-
-type tweet struct {
-	TweetID   string `json:"tweet_id"`
-	Text      string `json:"text"`
-	Timestamp string `json:"timestamp"`
-}
 
 func main() {
 	flag.Parse()
 
-	os.Remove("tweets.db")
-
-	b, err := exec.Command("sqlite3", "-separator", ",", "tweets.db", ".import tweets.csv tweets").CombinedOutput()
+	store, err := OpenStore(*dbPath)
 	if err != nil {
-		log.Fatalf("csv import error: %v: %s", err, string(b))
+		log.Fatalf("open database error: %v", err)
 	}
+	defer store.Close()
 
-	conn, err := sql.Open("sqlite3", "tweets.db")
-	if err != nil {
-		log.Fatalf("connect database error: %v", err)
+	http.HandleFunc("/refresh", refreshHandler(store, *configPath))
+	http.HandleFunc("/search", searchHandler(store))
+	http.HandleFunc("/export.csv", exportHandler(store))
+	http.Handle("/", http.FileServer(http.Dir("public")))
+
+	log.Printf("listening on %s", *addr)
+	if err := http.ListenAndServe(*addr, nil); err != nil {
+		log.Fatalf("server error: %v", err)
 	}
+}
 
-	http.HandleFunc("/search", func(w http.ResponseWriter, req *http.Request) {
-		q := req.FormValue("q")
-
-		query := `
-		select tweet_id, text, timestamp from tweets where text like $1
-		`
-		if req.FormValue("nort") != "" {
-			query += " and retweeted_status_user_id == ''"
-		}
-		query += " order by timestamp desc"
-		rows, err := conn.Query(query, fmt.Sprintf("%%%s%%", q))
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+func refreshHandler(store *Store, cfgPath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
-		defer rows.Close()
 
-		w.Header().Set("content-type", "text/plain; charset=utf-8")
-		w.Write([]byte("["))
-		first := true
-		enc := json.NewEncoder(w)
-		for rows.Next() {
-			if first {
-				first = false
-			} else {
-				w.Write([]byte(","))
-			}
-			var t tweet
-			err = rows.Scan(&t.TweetID, &t.Text, &t.Timestamp)
-			if err != nil {
-				break
-			}
-			err = enc.Encode(&t)
-			if err != nil {
-				break
+		cfg, err := LoadConfig(cfgPath)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		token := os.Getenv("X_BEARER_TOKEN")
+		if token == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X_BEARER_TOKEN is not set"})
+			return
+		}
+
+		client := NewXClient(token)
+		result := RefreshPosts(req.Context(), store, client, cfg)
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func searchHandler(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet && req.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		posts, err := store.SearchPosts(req.Context(), req.FormValue("q"), req.FormValue("source"))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, posts)
+	}
+}
+
+func exportHandler(store *Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet && req.Method != http.MethodPost {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+
+		posts, err := store.SearchPosts(req.Context(), req.FormValue("q"), req.FormValue("source"))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.Header().Set("content-type", "text/csv; charset=utf-8")
+		w.Header().Set("content-disposition", `attachment; filename="posts.csv"`)
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+			log.Printf("write csv bom error: %v", err)
+			return
+		}
+
+		cw := csv.NewWriter(w)
+		if err := cw.Write([]string{"id", "username", "created_at", "text", "url", "lang"}); err != nil {
+			log.Printf("write csv header error: %v", err)
+			return
+		}
+		for _, post := range posts {
+			if err := cw.Write([]string{post.ID, post.Username, post.CreatedAt, compactText(post.Text), post.URL, post.Lang}); err != nil {
+				log.Printf("write csv row error: %v", err)
+				return
 			}
 		}
-		w.Write([]byte("]"))
-	})
-	http.Handle("/", http.FileServer(http.Dir("public")))
-	http.ListenAndServe(*addr, nil)
+		cw.Flush()
+		if err := cw.Error(); err != nil {
+			log.Printf("flush csv error: %v", err)
+		}
+	}
+}
+
+func compactText(s string) string {
+	var b strings.Builder
+	lastWasSpace := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			if !lastWasSpace {
+				b.WriteByte(' ')
+				lastWasSpace = true
+			}
+			continue
+		}
+		b.WriteRune(r)
+		lastWasSpace = false
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("content-type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("write json error: %v", err)
+	}
 }
